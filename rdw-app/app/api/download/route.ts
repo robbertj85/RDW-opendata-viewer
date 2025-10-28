@@ -1,89 +1,147 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { spawn } from 'child_process'
+import { downloadDataset, DATASETS, DownloadProgress, formatBytes } from '@/lib/download-manager'
+import fs from 'fs'
 import path from 'path'
 
-// Store active download process
-let downloadProcess: any = null
-let downloadProgress: any = {}
+// Load metadata function
+function loadMetadata() {
+  const METADATA_FILE = path.join(process.cwd(), '..', 'data', '.download-metadata.json')
+
+  if (fs.existsSync(METADATA_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(METADATA_FILE, 'utf8'))
+    } catch (err) {
+      return {}
+    }
+  }
+  return {}
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { action } = await request.json()
+    const encoder = new TextEncoder()
+    const metadata = loadMetadata()
 
-    if (action === 'start') {
-      if (downloadProcess) {
-        return NextResponse.json(
-          { error: 'Download already in progress' },
-          { status: 409 }
-        )
-      }
+    // Create a readable stream for Server-Sent Events
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Send initial message
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: 'start',
+                message: 'Starting download process',
+                totalDatasets: DATASETS.length
+              })}\n\n`
+            )
+          )
 
-      // Reset progress
-      downloadProgress = {}
+          let completed = 0
+          let skipped = 0
+          let failed = 0
 
-      // Path to the download script (use smart downloader with delta support)
-      const scriptPath = path.join(process.cwd(), '..', 'download-rdw-data-smart.js')
+          // Download each dataset sequentially
+          for (const dataset of DATASETS) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: 'dataset_start',
+                  dataset: dataset.name,
+                  description: dataset.description
+                })}\n\n`
+              )
+            )
 
-      // Start the download process
-      downloadProcess = spawn('node', [scriptPath], {
-        cwd: path.join(process.cwd(), '..'),
-      })
+            const result = await downloadDataset(dataset, metadata, (progress: DownloadProgress) => {
+              // Send progress updates
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: 'progress',
+                    dataset: progress.dataset,
+                    status: progress.status,
+                    progress: progress.progress.toFixed(1),
+                    downloaded: formatBytes(progress.downloaded),
+                    total: formatBytes(progress.total),
+                    error: progress.error
+                  })}\n\n`
+                )
+              )
+            })
 
-      let outputBuffer = ''
-
-      downloadProcess.stdout.on('data', (data: Buffer) => {
-        const output = data.toString()
-        outputBuffer += output
-
-        // Parse progress from output (basic parsing)
-        const lines = output.split('\n')
-        lines.forEach((line: string) => {
-          if (line.includes('✅') || line.includes('⏳') || line.includes('❌')) {
-            // Store progress info
-            downloadProgress.lastOutput = line
-            downloadProgress.timestamp = new Date().toISOString()
+            if (result.skipped) {
+              skipped++
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: 'dataset_complete',
+                    dataset: dataset.name,
+                    status: 'skipped'
+                  })}\n\n`
+                )
+              )
+            } else if (result.success) {
+              completed++
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: 'dataset_complete',
+                    dataset: dataset.name,
+                    status: 'completed'
+                  })}\n\n`
+                )
+              )
+            } else {
+              failed++
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: 'dataset_complete',
+                    dataset: dataset.name,
+                    status: 'failed',
+                    error: result.error
+                  })}\n\n`
+                )
+              )
+            }
           }
-        })
-      })
 
-      downloadProcess.stderr.on('data', (data: Buffer) => {
-        console.error('Download error:', data.toString())
-        downloadProgress.error = data.toString()
-      })
+          // Send completion message
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: 'complete',
+                completed,
+                skipped,
+                failed,
+                message: 'Download process completed'
+              })}\n\n`
+            )
+          )
 
-      downloadProcess.on('close', (code: number) => {
-        downloadProgress.completed = true
-        downloadProgress.exitCode = code
-        downloadProcess = null
-      })
-
-      return NextResponse.json({
-        message: 'Download started',
-        status: 'started'
-      })
-    }
-
-    if (action === 'status') {
-      return NextResponse.json({
-        active: downloadProcess !== null,
-        progress: downloadProgress
-      })
-    }
-
-    if (action === 'cancel') {
-      if (downloadProcess) {
-        downloadProcess.kill()
-        downloadProcess = null
-        downloadProgress = { cancelled: true }
-        return NextResponse.json({ message: 'Download cancelled' })
+          controller.close()
+        } catch (error: any) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                type: 'error',
+                error: error.message || 'Unknown error occurred'
+              })}\n\n`
+            )
+          )
+          controller.close()
+        }
       }
-      return NextResponse.json({ message: 'No active download' })
-    }
+    })
 
-    return NextResponse.json(
-      { error: 'Invalid action' },
-      { status: 400 }
-    )
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
+    })
   } catch (error: any) {
     console.error('Download API error:', error)
     return NextResponse.json(
@@ -91,11 +149,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-}
-
-export async function GET() {
-  return NextResponse.json({
-    active: downloadProcess !== null,
-    progress: downloadProgress
-  })
 }

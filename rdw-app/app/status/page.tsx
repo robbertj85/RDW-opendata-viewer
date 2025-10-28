@@ -34,12 +34,24 @@ interface StatusData {
   error: string | null
 }
 
+interface DatasetProgress {
+  dataset: string
+  description?: string
+  status: string
+  progress: number
+  downloaded: string
+  total: string
+  error?: string
+}
+
 export default function StatusPage() {
   const [status, setStatus] = useState<StatusData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [downloading, setDownloading] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState<any>(null)
+  const [downloadProgress, setDownloadProgress] = useState<Map<string, DatasetProgress>>(new Map())
+  const [downloadComplete, setDownloadComplete] = useState(false)
+  const [downloadStats, setDownloadStats] = useState({ completed: 0, skipped: 0, failed: 0 })
 
   const loadStatus = async () => {
     try {
@@ -64,51 +76,111 @@ export default function StatusPage() {
   const startDownload = async () => {
     try {
       setDownloading(true)
+      setDownloadProgress(new Map())
+      setDownloadComplete(false)
+      setError(null)
+
       const response = await fetch("/api/download", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start" }),
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to start download")
+        throw new Error("Failed to start download")
       }
 
-      // Poll for progress
-      const progressInterval = setInterval(async () => {
-        const progressRes = await fetch("/api/download")
-        const progressData = await progressRes.json()
-        setDownloadProgress(progressData.progress)
+      if (!response.body) {
+        throw new Error("No response body")
+      }
 
-        if (progressData.progress?.completed) {
-          clearInterval(progressInterval)
-          setDownloading(false)
-          loadStatus() // Refresh status after download completes
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6))
+
+              if (data.type === "start") {
+                console.log("Download started:", data.message)
+              } else if (data.type === "dataset_start") {
+                setDownloadProgress((prev) => {
+                  const newMap = new Map(prev)
+                  newMap.set(data.dataset, {
+                    dataset: data.dataset,
+                    description: data.description,
+                    status: "starting",
+                    progress: 0,
+                    downloaded: "0 B",
+                    total: "0 B"
+                  })
+                  return newMap
+                })
+              } else if (data.type === "progress") {
+                setDownloadProgress((prev) => {
+                  const newMap = new Map(prev)
+                  newMap.set(data.dataset, {
+                    dataset: data.dataset,
+                    description: prev.get(data.dataset)?.description,
+                    status: data.status,
+                    progress: parseFloat(data.progress),
+                    downloaded: data.downloaded,
+                    total: data.total,
+                    error: data.error
+                  })
+                  return newMap
+                })
+              } else if (data.type === "dataset_complete") {
+                setDownloadProgress((prev) => {
+                  const newMap = new Map(prev)
+                  const existing = newMap.get(data.dataset)
+                  if (existing) {
+                    newMap.set(data.dataset, {
+                      ...existing,
+                      status: data.status,
+                      progress: data.status === "skipped" ? 100 : existing.progress,
+                      error: data.error
+                    })
+                  }
+                  return newMap
+                })
+              } else if (data.type === "complete") {
+                setDownloadStats({
+                  completed: data.completed,
+                  skipped: data.skipped,
+                  failed: data.failed
+                })
+                setDownloadComplete(true)
+                setDownloading(false)
+                loadStatus() // Refresh status after download completes
+              } else if (data.type === "error") {
+                setError(data.error)
+                setDownloading(false)
+              }
+            } catch (e) {
+              console.error("Error parsing SSE message:", e)
+            }
+          }
         }
-      }, 2000)
+      }
     } catch (err: any) {
       setError(err.message || "Failed to start download")
       setDownloading(false)
     }
   }
 
-  const checkDownloadStatus = async () => {
-    try {
-      const response = await fetch("/api/download")
-      const data = await response.json()
-      if (data.active) {
-        setDownloading(true)
-        setDownloadProgress(data.progress)
-      }
-    } catch (err) {
-      console.error("Error checking download status:", err)
-    }
-  }
-
   useEffect(() => {
     loadStatus()
-    checkDownloadStatus()
 
     // Auto-refresh every 30 seconds
     const interval = setInterval(loadStatus, 30000)
@@ -210,39 +282,64 @@ export default function StatusPage() {
                     </ul>
                   </div>
 
-                  {downloading && downloadProgress && (
-                    <div className="mt-4 p-4 bg-muted rounded-lg">
+                  {downloading && downloadProgress.size > 0 && (
+                    <div className="mt-4 p-4 bg-muted rounded-lg space-y-3">
                       <div className="flex items-center gap-2 mb-2">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         <span className="font-medium">Download in progress...</span>
                       </div>
-                      {downloadProgress.lastOutput && (
-                        <div className="text-xs font-mono bg-background p-2 rounded mt-2">
-                          {downloadProgress.lastOutput}
-                        </div>
-                      )}
-                      {downloadProgress.error && (
-                        <div className="text-xs text-destructive mt-2">
-                          Error: {downloadProgress.error}
-                        </div>
-                      )}
+                      <div className="space-y-2">
+                        {Array.from(downloadProgress.values()).map((dataset) => (
+                          <div key={dataset.dataset} className="bg-background p-3 rounded">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium">{dataset.description || dataset.dataset}</span>
+                              {dataset.status === "completed" && <CheckCircle className="h-4 w-4 text-green-600" />}
+                              {dataset.status === "skipped" && <span className="text-xs text-muted-foreground">Skipped (up-to-date)</span>}
+                              {dataset.status === "failed" && <span className="text-xs text-destructive">Failed</span>}
+                            </div>
+                            {dataset.status === "downloading" && (
+                              <>
+                                <div className="w-full bg-secondary rounded-full h-2 mb-1">
+                                  <div
+                                    className="bg-primary h-2 rounded-full transition-all"
+                                    style={{ width: `${dataset.progress}%` }}
+                                  />
+                                </div>
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                  <span>{dataset.progress.toFixed(1)}%</span>
+                                  <span>{dataset.downloaded} / {dataset.total}</span>
+                                </div>
+                              </>
+                            )}
+                            {dataset.error && (
+                              <div className="text-xs text-destructive mt-1">
+                                Error: {dataset.error}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {downloadProgress?.completed && (
-                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                      <span className="text-green-800 font-medium">
-                        Download completed! Refresh the page to see updated status.
-                      </span>
+                  {downloadComplete && (
+                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                        <span className="text-green-800 font-medium">
+                          Download completed!
+                        </span>
+                      </div>
+                      <div className="text-sm text-green-700 mb-3">
+                        ✅ Downloaded: {downloadStats.completed} | ⏭️ Skipped: {downloadStats.skipped} | ❌ Failed: {downloadStats.failed}
+                      </div>
                       <Button
                         onClick={loadStatus}
                         size="sm"
                         variant="outline"
-                        className="ml-auto"
                       >
                         <RefreshCw className="h-4 w-4 mr-2" />
-                        Refresh
+                        Refresh Status
                       </Button>
                     </div>
                   )}
@@ -326,7 +423,7 @@ export default function StatusPage() {
                         .reduce((sum, d) => sum + (d.recordCount || 0), 0)
                         .toLocaleString("en-US", { notation: "compact" })}
                     </div>
-                    <div className="text-sm text-muted-foreground mt-1">Total Records (est.)</div>
+                    <div className="text-sm text-muted-foreground mt-1">Total Records</div>
                   </div>
                 </div>
               </CardContent>
@@ -347,7 +444,7 @@ export default function StatusPage() {
                         <TableHead>Filename</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Size</TableHead>
-                        <TableHead className="text-right">Records (est.)</TableHead>
+                        <TableHead className="text-right">Records</TableHead>
                         <TableHead>Last Updated</TableHead>
                       </TableRow>
                     </TableHeader>

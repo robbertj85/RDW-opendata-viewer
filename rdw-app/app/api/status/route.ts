@@ -1,9 +1,34 @@
 import { NextRequest, NextResponse } from "next/server"
 import fs from "fs"
 import path from "path"
+import { createReadStream } from "fs"
+import { createInterface } from "readline"
 
 const BACKEND_URL = "http://localhost:3001"
 const DATA_DIR = path.join(process.cwd(), "..", "data")
+
+// Count lines in a file efficiently using streams
+async function countLines(filepath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let lineCount = 0
+    const rl = createInterface({
+      input: createReadStream(filepath),
+      crlfDelay: Infinity,
+    })
+
+    rl.on("line", () => {
+      lineCount++
+    })
+
+    rl.on("close", () => {
+      resolve(lineCount)
+    })
+
+    rl.on("error", (error) => {
+      reject(error)
+    })
+  })
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -45,32 +70,40 @@ export async function GET(request: NextRequest) {
     }
 
     // Enhance dataset info with file stats
-    const enhancedDatasets = datasetsInfo.map((dataset) => {
-      const filepath = path.join(DATA_DIR, dataset.filename)
-      let lastModified = null
-      let recordCount = null
+    const enhancedDatasets = await Promise.all(
+      datasetsInfo.map(async (dataset) => {
+        const filepath = path.join(DATA_DIR, dataset.filename)
+        let lastModified = null
+        let recordCount = null
 
-      try {
-        if (fs.existsSync(filepath)) {
-          const stats = fs.statSync(filepath)
-          lastModified = stats.mtime.toISOString()
+        try {
+          if (fs.existsSync(filepath)) {
+            const stats = fs.statSync(filepath)
+            lastModified = stats.mtime.toISOString()
 
-          // Estimate record count from file size (rough estimate)
-          // Average CSV row is ~400-500 bytes
-          const fileSizeBytes = stats.size
-          const estimatedRecords = Math.floor(fileSizeBytes / 450)
-          recordCount = estimatedRecords
+            // Count actual lines in the file
+            try {
+              const lineCount = await countLines(filepath)
+              // Subtract 1 for header row
+              recordCount = lineCount > 0 ? lineCount - 1 : 0
+            } catch (countError) {
+              console.error(`Failed to count lines in ${dataset.filename}:`, countError)
+              // Fallback to estimation if line counting fails
+              const fileSizeBytes = stats.size
+              recordCount = Math.floor(fileSizeBytes / 450)
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to get stats for ${dataset.filename}:`, error)
         }
-      } catch (error) {
-        console.error(`Failed to get stats for ${dataset.filename}:`, error)
-      }
 
-      return {
-        ...dataset,
-        lastModified,
-        recordCount,
-      }
-    })
+        return {
+          ...dataset,
+          lastModified,
+          recordCount,
+        }
+      })
+    )
 
     // Database connection info
     const databaseInfo = {
