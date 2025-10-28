@@ -234,19 +234,32 @@ export default function StatusPage() {
 
         {status && (
           <div className="space-y-6">
-            {/* Download Manager - Show if datasets are missing */}
-            {status.availableDatasets < status.totalDatasets && (
-              <Card className="border-orange-500">
+            {/* Download/Update Manager */}
+            <Card className={status.availableDatasets < status.totalDatasets ? "border-orange-500" : ""}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <AlertCircle className="h-6 w-6 text-orange-500" />
-                      <div>
-                        <CardTitle>Data Download Required</CardTitle>
-                        <CardDescription>
-                          {status.totalDatasets - status.availableDatasets} dataset(s) missing - download required
-                        </CardDescription>
-                      </div>
+                      {status.availableDatasets < status.totalDatasets ? (
+                        <>
+                          <AlertCircle className="h-6 w-6 text-orange-500" />
+                          <div>
+                            <CardTitle>Data Download Required</CardTitle>
+                            <CardDescription>
+                              {status.totalDatasets - status.availableDatasets} dataset(s) missing - download required
+                            </CardDescription>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="h-6 w-6 text-primary" />
+                          <div>
+                            <CardTitle>Dataset Management</CardTitle>
+                            <CardDescription>
+                              All {status.totalDatasets} datasets available - check for updates
+                            </CardDescription>
+                          </div>
+                        </>
+                      )}
                     </div>
                     <Button
                       onClick={startDownload}
@@ -259,10 +272,15 @@ export default function StatusPage() {
                           <Loader2 className="h-5 w-5 animate-spin" />
                           Downloading...
                         </>
-                      ) : (
+                      ) : status.availableDatasets < status.totalDatasets ? (
                         <>
                           <Download className="h-5 w-5" />
                           Download Datasets
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-5 w-5" />
+                          Check for Updates
                         </>
                       )}
                     </Button>
@@ -345,7 +363,6 @@ export default function StatusPage() {
                   )}
                 </CardContent>
               </Card>
-            )}
 
             {/* Database Connection Status */}
             <Card>
