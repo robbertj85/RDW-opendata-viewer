@@ -4,7 +4,8 @@
   "description": "Web application for exploring and analyzing Dutch RDW vehicle registration data",
   "main": "local-query-server-duckdb.js",
   "scripts": {
-    "download": "node download-rdw-data-parallel.js",
+    "download": "node download-rdw-data-smart.js",
+    "download-all": "node download-rdw-data-parallel.js",
     "backend": "node local-query-server-duckdb.js",
     "frontend": "cd rdw-app && npm run dev",
     "dev": "./start.sh"

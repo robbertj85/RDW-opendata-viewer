@@ -3,6 +3,7 @@ data/
 *.csv
 *.duckdb
 *.duckdb.wal
+.download-metadata.json
 
 # Temporary files
 tmp/

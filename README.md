@@ -39,13 +39,38 @@ npm install
 
 ### 2. Download RDW Data
 
-Download the RDW CSV datasets (this may take a while):
+The application provides two methods to download RDW CSV datasets:
 
+**Method 1: Via Web Interface (Recommended)**
+1. Start the backend server (see step 3)
+2. Open the application (see step 4)
+3. Navigate to the **Status** tab
+4. Click the **"Download Datasets"** button if data is missing
+5. Monitor real-time download progress in the UI
+
+**Method 2: Via Command Line**
+
+For smart delta downloads (only downloads if files are updated):
 ```bash
+npm run download
+# or
+node download-rdw-data-smart.js
+```
+
+For full parallel downloads (always downloads all missing files):
+```bash
+npm run download-all
+# or
 node download-rdw-data-parallel.js
 ```
 
-Data will be downloaded to the `data/` directory.
+**Delta Download Support:**
+- The smart downloader checks `Last-Modified` and `ETag` headers from the RDW API
+- Only downloads files that have been updated on the server
+- Saves download metadata in `data/.download-metadata.json`
+- Significantly reduces download time and bandwidth for updates
+
+Data will be downloaded to the `data/` directory (~5-10 GB total).
 
 ### 3. Start the Backend Server
 
@@ -99,10 +124,12 @@ Navigate to http://localhost:3000 in your browser.
 
 ### Status Dashboard
 
-Monitor system health and view:
-- DuckDB server status
-- Dataset availability and file sizes
-- Unified view schema information
+Monitor system health and manage data downloads:
+- **DuckDB server status** - Connection state and backend health
+- **Dataset availability** - View which datasets are available locally
+- **Download manager** - One-click download of missing datasets with real-time progress
+- **Delta download support** - Automatically skip files that are already up-to-date
+- **File sizes and metadata** - Last modified dates and storage usage
 
 ## Architecture
 
