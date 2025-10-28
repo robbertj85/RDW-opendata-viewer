@@ -1,0 +1,34 @@
+{
+  "name": "rdw-claude-server",
+  "version": "1.0.0",
+  "description": "AI-powered natural language query interface for RDW Open Data (Ollama/Claude)",
+  "main": "ollama-server.js",
+  "scripts": {
+    "start": "node ollama-server.js",
+    "start-claude": "node claude-server.js",
+    "download": "node download-rdw-data.js",
+    "download-parallel": "node download-rdw-data-parallel.js",
+    "local-server": "node local-query-server.js",
+    "local-server-memory": "node --max-old-space-size=20480 local-query-server-memory.js",
+    "local-server-sqlite": "node local-query-server-sqlite.js",
+    "local-server-duckdb": "node local-query-server-duckdb.js",
+    "viewer-dev": "node viewer-dev-server.js",
+    "dev": "concurrently \"npm run local-server-duckdb\" \"npm run start\" \"npm run viewer-dev\"",
+    "dev-fast": "concurrently \"npm run local-server-memory\" \"npm run start\" \"npm run viewer-dev\"",
+    "dev-sqlite": "concurrently \"npm run local-server-sqlite\" \"npm run start\" \"npm run viewer-dev\"",
+    "dev-csv": "concurrently \"npm run local-server\" \"npm run start\" \"npm run viewer-dev\"",
+    "dev-claude": "concurrently \"npm run local-server-duckdb\" \"npm run start-claude\" \"npm run viewer-dev\"",
+    "viewer": "./start.sh"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.0.0",
+    "duckdb": "^1.4.1",
+    "express": "^4.18.2",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
