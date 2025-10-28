@@ -3,8 +3,8 @@ import { downloadDataset, DATASETS, DownloadProgress, formatBytes } from '@/lib/
 import fs from 'fs'
 import path from 'path'
 
-// Load metadata function
-function loadMetadata() {
+// Load metadata function for API route
+function loadDownloadMetadata() {
   const METADATA_FILE = path.join(process.cwd(), '..', 'data', '.download-metadata.json')
 
   if (fs.existsSync(METADATA_FILE)) {
@@ -20,7 +20,7 @@ function loadMetadata() {
 export async function POST(request: NextRequest) {
   try {
     const encoder = new TextEncoder()
-    const metadata = loadMetadata()
+    const metadata = loadDownloadMetadata()
 
     // Create a readable stream for Server-Sent Events
     const stream = new ReadableStream({
