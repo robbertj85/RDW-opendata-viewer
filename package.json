@@ -6,6 +6,7 @@
   "scripts": {
     "download": "node download-rdw-data-smart.js",
     "download-all": "node download-rdw-data-parallel.js",
+    "create-metadata": "node create-metadata.js",
     "backend": "node local-query-server-duckdb.js",
     "frontend": "cd rdw-app && npm run dev",
     "dev": "./start.sh"
