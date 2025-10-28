@@ -21,19 +21,10 @@ fi
 echo "✅ Data files found"
 echo ""
 
-# Open the viewer in the default browser
-echo "🌐 Opening rdw-viewer.html in your browser..."
-open rdw-viewer.html
-echo ""
-
-# Give browser a moment to open
-sleep 2
-
 echo "🚀 Starting servers..."
 echo ""
-echo "📍 Local Query Server: http://localhost:3001"
-echo "📍 Claude AI Server:   http://localhost:3000"
-echo "📍 Viewer:             rdw-viewer.html"
+echo "📍 DuckDB Backend:     http://localhost:3001"
+echo "📍 Next.js Frontend:   http://localhost:3000"
 echo ""
 echo "Press Ctrl+C to stop all servers"
 echo ""
