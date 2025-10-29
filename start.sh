@@ -31,5 +31,9 @@ echo ""
 echo "════════════════════════════════════════════════════════════════════"
 echo ""
 
-# Start both servers using npm run dev
-npm run dev
+# Start both servers concurrently
+npx concurrently \
+  --names "BACKEND,FRONTEND" \
+  --prefix-colors "cyan,magenta" \
+  "npm run backend" \
+  "npm run frontend"

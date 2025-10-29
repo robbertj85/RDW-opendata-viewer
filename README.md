@@ -50,25 +50,11 @@ The application provides two methods to download RDW CSV datasets:
 
 **Method 2: Via Command Line**
 
-For smart delta downloads (only downloads if files are updated):
 ```bash
 npm run download
 # or
-node download-rdw-data-smart.js
+node download-rdw-data.js
 ```
-
-For full parallel downloads (always downloads all missing files):
-```bash
-npm run download-all
-# or
-node download-rdw-data-parallel.js
-```
-
-**Delta Download Support:**
-- The smart downloader checks `Last-Modified` and `ETag` headers from the RDW API
-- Only downloads files that have been updated on the server
-- Saves download metadata in `data/.download-metadata.json`
-- Significantly reduces download time and bandwidth for updates
 
 Data will be downloaded to the `data/` directory (~5-10 GB total).
 
